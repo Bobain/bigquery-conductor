@@ -4,6 +4,7 @@
     <title>Network | Hierarchical layout</title>
 
     <link href="./static/lib/js/vis-network.min.css" rel="stylesheet" type="text/css"/>
+
     <style type="text/css">
             /*
          * Default Layout Theme
@@ -38,7 +39,7 @@
             background:	#FFF;
             border:		1px solid #BBB;
             padding:	10px;
-            overflow:	auto;
+            overflow:	auto!important;
             /* DO NOT add scrolling (or padding) to 'panes' that have a content-div,
                otherwise you may get double-scrollbars - on the pane AND on the content-div
                - use ui-layout-wrapper class if pane has a content-div
@@ -245,44 +246,7 @@
             display:		none;
         }
 
-        /*
-         *	Rules for simulated drop-down/pop-up lists
-         */
-        ul {
-            /* rules common to BOTH inner and outer UL */
-            z-index:	100000;
-            margin:		1ex 0;
-            padding:	0;
-            list-style:	none;
-            cursor:		pointer;
-            border:		1px solid Black;
-            /* rules for outer UL only */
-            width:		15ex;
-            position:	relative;
-        }
-        ul li {
-            background-color: #EEE;
-            padding: 0.15em 1em 0.3em 5px;
-        }
-        ul ul {
-            display:	none;
-            position:	absolute;
-            width:		100%;
-            left:		-1px;
-            /* Pop-Up */
-            bottom:		0;
-            margin:		0;
-            margin-bottom: 1.55em;
-        }
-        .ui-layout-north ul ul {
-            /* Drop-Down */
-            bottom:		auto;
-            margin:		0;
-            margin-top:	1.45em;
-        }
-        ul ul li		{ padding: 3px 1em 3px 5px; }
-        ul ul li:hover	{ background-color: #FF9; }
-        ul li:hover ul	{ display:	block; background-color: #EEE; }
+
 
         /* The Overlay (background) */
         .overlay {
@@ -336,6 +300,31 @@
           }
         }
 
+        /* ####################### side bar selector */
+        .selectorSideBarFirstList {
+            padding-left: 0;
+            margin:0 0 0 0
+        }
+        .selectorSideBarFirstListElmnt {
+            padding-left: 0;
+            text-decoration: none; /* Remove default text underline */
+            color: black; /* Add a black text color */
+            list-style:	none;
+            margin:0 0 0 0
+        }
+        .selectorSideBar2ndList {
+            padding-left: 15px;
+            margin:0 0 0 0
+        }
+        .selectorSideBar2ndListElmnt{
+            padding-left: 5;
+            text-decoration: none; /* Remove default text underline */
+            color: black; /* Add a black text color */
+            list-style:	none;
+            margin:0 0 0 0
+        }
+        /* ####################### side bar selector */
+
         #mynetwork {
             width: 100%;
             height: 95%;
@@ -356,6 +345,9 @@
 
 	<script type="text/javascript" src="./static/lib/js/debug.js"></script>
     <script type="text/javascript">
+        {{ project_details|safe }}
+        {{ graphs_data|safe }}
+        {{ fid_to_interpreted_id|safe }}
 
         var nodes = null;
         var edges = null;
@@ -377,7 +369,8 @@
             // This should define a variable data with nodes and edges
             // This should also gives us a 'details' fields in each node, so when can show the user more
             // details about each table/view/etc
-            {{ network_data|safe }}
+            var interpreter = document.getElementById("dependenciesInterpreter").value;
+            var data = graphsData[interpreter]["js_graphs"][graphsData[interpreter]["interpreted_id_to_js_graph_num"][fullIdToInterpretedId[interpreter][nodeIdforGraphToDiplay]]]
 
             // create a network
             var container = document.getElementById('mynetwork');
@@ -388,13 +381,17 @@
 
             var options = {
                 interaction:{hover:true},
-                layout: {
-                    hierarchical: {
-                        direction: directionInput,
-                        edgeMinimization: false,
-                        sortMethod: sortMethod // "directed" // sortMethod
-                    }
-                },
+                // configure: {
+                //     enabled: true,
+                //     filter: 'physics, layout',
+                //     showButton: true
+                // },
+                hierarchicalLayout:
+					{
+                		enabled: true,
+                        levelSeparation: 150,
+						nodeSpacing: 100,
+                        direction: "LR"},
                 physics: {
                     enabled: false,
                     barnesHut: {
@@ -402,7 +399,7 @@
                     }
                 },
                 edges: {
-                  smooth: true,
+                  // smooth: true,
                   arrows: {to : true }
                 }
             };
@@ -415,6 +412,8 @@
                 document.getElementById('selection').innerHTML = 'Selection: ' + params.nodes;
                 openNav();
             });
+        console.log("draw made")
+            // TODO http://visjs.org/docs/network/#methodSelection setSelection
         }
 
     </script>
@@ -465,7 +464,7 @@
 	,	south__size:		600 // "auto"
 	,	south__initClosed:	true
 	,	south__initHidden:	true
-	,	west__size:			200
+	,	west__size:			380
 	,	west__initClosed:	false
 	,	west__initHidden:	false
 	,	east__size:			300
@@ -498,7 +497,7 @@
 
 		//	some pane-size settings
 		,	west__minSize:				100
-		,	east__size:					300
+		,	east__size:					400
 		,	east__minSize:				200
 		,	east__maxSize:				.5 // 50% of layout width
 		,	center__minWidth:			100
@@ -583,7 +582,7 @@
 	</script>
 </head>
 
-<body onload="myLayout.loadState(stateResetSettings, true); draw();">
+<body onload="hide2ndLists(); myLayout.loadState(stateResetSettings, true);"> <!-- draw(); -->
 
 <!-- UNUSED: http://layout.jquery-dev.net/demos/simple.html manually attach allowOverflow method to pane -->
 <div class="ui-layout-north" onmouseover="myLayout.allowOverflow('north')" onmouseout="myLayout.resetOverflow(this)">
@@ -620,6 +619,76 @@
       <!--<input type="button" id="btn-RL" value="Right-Left">-->
       <!--<input type="hidden" id='direction' value="LR">-->
     <!--</p>-->
+
+    <input type="text" name="selected_table" id="searchBarInput" onkeyup="searchBarDisplayer()"
+           placeholder="Search for tables or views.." title="Type in a name">
+
+    {{ search_menu|safe }}
+
+<script>
+function hide2ndLists() {
+    secli = document.getElementsByClassName("selectorSideBar2ndListElmnt");
+    for (j = 0; j < secli.length; j++) {
+        secli[j].style.display = "none";
+    }
+}
+function drawGraphContaining(elmnt){
+    console.log("Should now be displaying: " + elmnt.getAttribute("fullId")) + " (" + fullIdToInterpretedId["Natural dependencies"][elmnt.getAttribute("fullId")] + ")"
+    nodeIdforGraphToDiplay = elmnt.getAttribute("fullId")
+    draw()
+    return;
+}
+function panelControlDisplay(elmnt){
+    if (typeof document.expandedDataset != "undefined"){
+        secli = document.expandedDataset.getElementsByClassName("selectorSideBar2ndListElmnt")
+        for (j = 0; j < secli.length; j++) {
+            secli[j].style.display = "none";
+        }
+        if (elmnt === document.expandedDataset){
+            document.expandedDataset = undefined
+            return
+        }
+    }
+    document.expandedDataset = elmnt // document.getElementById(elmntId)
+    secli = document.expandedDataset.getElementsByClassName("selectorSideBar2ndListElmnt")
+    for (j = 0; j < secli.length; j++) {
+        secli[j].style.display = "";
+    }
+}
+function searchBarDisplayer() {
+    var input, filter, ul, li, a, i, j, nbMatchInDataset;
+    input = document.getElementById("searchBarInput");
+    filter = input.value.toUpperCase();
+    if (filter === ""){
+        hide2ndLists()
+        li = document.getElementsByClassName("selectorSideBarFirstListElmnt");
+        for (i = 0; i < li.length; i++) {
+            li[i].style.display = "";
+        }
+        return
+    }
+    li = document.getElementsByClassName("selectorSideBarFirstListElmnt");
+    // li = ul.getElementsByTagName("li");
+    for (i = 0; i < li.length; i++) {
+        nbMatchInDataset = 0;
+        secli = li[i].getElementsByClassName("selectorSideBar2ndListElmnt");
+        for (j = 0; j < secli.length; j++) {
+            if (secli[j].getAttribute("fullId").toUpperCase().indexOf(filter) > -1) {
+                secli[j].style.display = "";
+                nbMatchInDataset += 1;
+            } else {
+                secli[j].style.display = "none";
+            }
+        }
+        if (nbMatchInDataset == 0){
+            li[i].style.display = "none";
+        } else {
+            li[i].style.display = "";
+        }
+    }
+}
+</script>
+
 </div>
 <div class="ui-layout-south">
     This is the south pane, closable, slidable and resizable &nbsp;
@@ -634,6 +703,9 @@
     <!--<div>-->
         <!--Inputs tables are red nodes. Click on a node to see more details and edit-->
     <!--</div>-->
+    <select id="dependenciesInterpreter" onchange="draw();return false;">
+        {{ interpreters_list|safe }}
+    </select>
     <select id="sortMethod"  onchange="draw();return false;"> <!--name="sortMethod" value="directed"-->
         <option value="directed" selected="true">directed</option>
         <option value="hubsize">hubsize</option>

@@ -106,5 +106,13 @@ PATH_TO_REPO = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'bq-con
 
 # regular expression used to analyse the SQL of a query and get dependent tables or views
 # needed because unfortunately the dry run of a query does not provide dependencies on views:
-# we have to guess it from the SQL
-REGEXP_FOR_SQL_DEPENDENCIES = re.compile("`([^`]*)`")
+# we have to guess it from the SQL. Imperfect solution which assumes that ` is only used to surround references to
+# views and tables
+REGEXP_FOR_SQL_DEPENDENCIES = re.compile("(JOIN|FROM|from|join) +`([^`]+\.[^`]+)`") # re.IGNORECASE does not seem to work as expected so lower and upper
+
+# TODO: wildcards queries https://cloud.google.com/bigquery/docs/querying-wildcard-tables
+# we will need info from project in this case... I suppose the _TABLE_SUFFIX mecanism will force us to use
+# referenced tables: but before trying this, we'll need to get sure that queries cannot be used with wildcards
+# (as said in limitations at the bottom of doc)
+def get_sql_dependencies(sql):
+    return [m[1] for m in REGEXP_FOR_SQL_DEPENDENCIES.findall(sql, re.IGNORECASE)]

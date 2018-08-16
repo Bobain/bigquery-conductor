@@ -1,6 +1,6 @@
 from google.cloud import bigquery
 from google.oauth2 import service_account
-import imp, pip
+import imp, pip, json, time
 
 # < utils functions for client
 def job_result_raise_if_error(job, add_message):
@@ -23,6 +23,7 @@ def get_job_config(**kwargs):
 class BQClient():
     _client = None
     bq_conductor_conf = None
+    project_id = None
 
     def __init__(self, path_to_conf_file):
         self.bq_conductor_conf = imp.load_source('bq_client_conf', path_to_conf_file)
@@ -33,6 +34,7 @@ class BQClient():
         self._client = bigquery.Client(project=self.bq_conductor_conf.GOOGLE_CLOUD_PROJECT,
                                  credentials=credentials)
         self.DEFAULTS = self.bq_conductor_conf.DEFAULTS
+        self.project_id = self.bq_conductor_conf.GOOGLE_CLOUD_PROJECT
 
     def create_dataset(self, dataset_id, location=None):
         """ creating a dataset """
@@ -53,20 +55,21 @@ class BQClient():
         return [d.table_id for d in self._client.list_tables(dataset=self._client.dataset(dataset_id))]
 
     def get_all_details(self):
+        start_time = time.time()
+        print('Starting to retrieve all details for project: this may be long...')
         details = dict()
-        for d in self._client.list_datasets(True):
-            details[d.dataset_id]['details'] = d
-            details[d.dataset_id]['table_dict'] = dict()
+        for d in self._client.list_datasets(include_all=False):
+            d_full_id = self.bq_conductor_conf.GOOGLE_CLOUD_PROJECT + '.' + d.dataset_id
+            details[d_full_id] = dict()
             for t in self._client.list_tables(dataset=self._client.dataset(d.dataset_id)):
-                details[d.dataset_id][t.table_id] = t
-                if t.type == 'VIEW':
-                    raise
-                    # TODO dry run execute SQL: keep all details
-                elif t.type == 'TABLE':
-                    pass
-                else:
-                    raise "UNKNOWN TYPE for table %s.%s" % (d.dataset_id, t.table_id)
+                # TODO: do not get these details now, but only when needed? Fo now just list tables
+                # the next call turns 35 seconds (already too slow for just the list of tables) into more than 6 minutes
+                details[d_full_id][t.table_id] = self._client.get_table(t.reference).to_api_repr()
+        print('\tFinished to retrieve all details for project: it took %g seconds' % (time.time()-start_time))
+        return details
 
+    def list_all_objects(self):
+        pass
 
     def create_view(self, dataset_id, view_name, viewSQL, use_legacy_sql=None):
         """ creating a view """
@@ -176,4 +179,6 @@ class BQClient():
 
 
 if __name__ == "__main__":
-    pass
+    import os
+    bqclient = BQClient(os.path.join(os.path.dirname(os.path.realpath(__file__)), '..', '..', 'tests', 'examples',
+                                     'basic_tests', 'bq_conductor_conf.py'))
