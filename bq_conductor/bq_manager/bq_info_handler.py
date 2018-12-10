@@ -48,8 +48,8 @@ class BasicVisualizer():
                         dot.node(t_dep, label=t_dep.split('.')[-1])
                         created_node += [t_dep]
                     dot.edge(n_id, t_dep)
-        dot.render('dot_tmp', view=True, format='svg', cleanup=True)
-        return None
+        fn = dot.render('dot_tmp', format='svg', cleanup=True)# , view=True
+        return fn
 
 
 class BQInfoHandler():
@@ -256,6 +256,7 @@ class BQInfoHandler():
 
 
 if __name__ == '__main__':
+    import os
     bv = BasicVisualizer("/home/tonigor/git_repos/bigquery-conductor/tests/examples/basic_tests/bq_conductor_conf.py")
-    bv.visualize_dependencies("ulule-database.a_ulule_partner_visibility", "monthly_brands_metrics_to_be_cached")
-    print('ok')
+    fn = bv.visualize_dependencies("ulule-database.a_ulule_partner_visibility", "monthly_brands_metrics_to_be_cached")
+    print('file://'+ os.getcwd() + '/' + fn)
