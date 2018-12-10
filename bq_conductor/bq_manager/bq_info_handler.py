@@ -1,5 +1,7 @@
 from bq_conductor.bq_manager.bq_client import BQClient
+from google.cloud.bigquery import TableReference, DatasetReference, UDFResource
 import datetime, warnings, time
+from graphviz import Digraph
 
 # TODO: check qu'il n'y a pas deux vues a 'cached' qui ont le meme output final
 # TODO: dans un cas d'interpretation de 'factorised views' a plusieurs composantes: check consistency with repo for NEED_REPO_DEF
@@ -11,10 +13,43 @@ import datetime, warnings, time
 STATIC_TABLES = []
 BROKEN_DEP_MESS = "Broken dependencies:"
 
+URL_BQ = "https://console.cloud.google.com/bigquery?project={project_id}&amp;p={project_id}&amp;d={dataset}&amp;t={table}&amp;page=table"
+
 
 def full_id_to_pdt_id(full_id):
     pdt_id = full_id.split('.')
     return (pdt_id[0] + '.' + pdt_id[1], pdt_id[2])
+
+
+class BasicVisualizer():
+    bq_info_handler = None
+
+    def __init__(self, path_to_conf_file):
+        self.bq_info_handler = BQInfoHandler(path_to_conf_file=path_to_conf_file, retrieve_all_data=False)
+        self.bq_info_handler.raw_details = dict()
+
+    def visualize_dependencies(self, dataset, view):
+        self.bq_info_handler.get_full_dependency(dataset, view, interpreter="Natural dependencies")
+        dot = Digraph(comment=dataset + '.' + view)
+        project_id = self.bq_info_handler.bq_client.project_id
+        created_node = []
+        for d in bv.bq_info_handler.raw_details:
+            for t in bv.bq_info_handler.raw_details[d]:
+                n_id = d + '.' + t
+                if n_id not in created_node:
+                    dot.node(n_id, label=t, href=URL_BQ.format(table=t, project_id=d.split('.')[0],
+                                                              dataset=d.split('.')[1]))
+                    created_node += [n_id]
+        for d in bv.bq_info_handler.raw_details:
+            for t in bv.bq_info_handler.raw_details[d]:
+                n_id = d + '.' + t
+                for t_dep in bv.bq_info_handler.raw_details[d][t]['first_order_dependencies']:
+                    if t_dep not in created_node:
+                        dot.node(t_dep, label=t_dep.split('.')[-1])
+                        created_node += [t_dep]
+                    dot.edge(n_id, t_dep)
+        dot.render('dot_tmp', view=True, format='svg', cleanup=True)
+        return None
 
 
 class BQInfoHandler():
@@ -30,9 +65,10 @@ class BQInfoHandler():
     errors_to_raise = dict()
     raw_details = None
 
-    def __init__(self, path_to_conf_file):
+    def __init__(self, path_to_conf_file, retrieve_all_data=True):
         self.bq_client = BQClient(path_to_conf_file)
-        self.update_data()
+        if retrieve_all_data:
+            self.update_data()
         self.bq_conductor_conf = self.bq_client.bq_conductor_conf
 
     def get_details_from_dt_id(self, dt_id):
@@ -173,7 +209,13 @@ class BQInfoHandler():
                 and 'first_order_dependencies' in self.interpreted_graphs[interpreter]['nodes'][view_full_id]:
             return self.interpreted_graphs[interpreter]['nodes'][view_full_id]['first_order_dependencies']
         if (dataset_id not in self.raw_details) or (view_id not in self.raw_details[dataset_id]):
-            return "%s '%s.%s' does not exist" % (BROKEN_DEP_MESS, dataset_id, view_id)
+            # lazy load:
+            if dataset_id not in self.raw_details:
+                self.raw_details[dataset_id] = dict()
+            self.raw_details[dataset_id][view_id] = self.bq_client._client.get_table(\
+                TableReference(DatasetReference(self.bq_conductor_conf.GOOGLE_CLOUD_PROJECT, dataset_id.split('.')[-1]), view_id)) \
+                .to_api_repr()
+            # return "%s '%s.%s' does not exist" % (BROKEN_DEP_MESS, dataset_id, view_id)
         view_full_metadata = self.raw_details[dataset_id][view_id]
         self.interpreted_graphs[interpreter]['nodes'][view_full_id] = view_full_metadata
         if view_full_metadata["type"] != 'VIEW':  # Note 1
@@ -211,3 +253,9 @@ class BQInfoHandler():
             dep = set()
         self.interpreted_graphs[interpreter]['nodes'][view_full_id]['first_order_dependencies'] = dep
         return self.interpreted_graphs[interpreter]['nodes'][view_full_id]['first_order_dependencies']
+
+
+if __name__ == '__main__':
+    bv = BasicVisualizer("/home/tonigor/git_repos/bigquery-conductor/tests/examples/basic_tests/bq_conductor_conf.py")
+    bv.visualize_dependencies("ulule-database.a_ulule_partner_visibility", "monthly_brands_metrics_to_be_cached")
+    print('ok')
