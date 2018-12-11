@@ -30,7 +30,6 @@ class BasicVisualizer():
     def visualize_dependencies(self, dataset, view):
         self.bq_info_handler.get_full_dependency(dataset, view, interpreter="Natural dependencies")
         dot = Digraph(comment=dataset + '.' + view)
-        created_node = dict()
         subgraphs = dict()
         for d in bv.bq_info_handler.raw_details:
             d_name = d.split('.')[-1]
@@ -41,17 +40,14 @@ class BasicVisualizer():
                 s.attr(color='lightgrey')
             for t in bv.bq_info_handler.raw_details[d]:
                 n_id = d + '.' + t
-                if n_id not in created_node:
-                    if n_id == dataset + '.' + view:
-                        node_attr = dict(style='filled', color='lightgreen')
-                    elif bv.bq_info_handler.raw_details[d][t]['type'] == 'TABLE':
-                        node_attr = dict(style='filled', color='red')
-                    else:
-                        node_attr = dict(style='filled', color='white')
-                    with subgraphs[d_name] as s:
-                        created_node[n_id] = s.node(n_id, label=t,
-                                                    href=URL_BQ.format(table=t,
-                                                                   project_id=d.split('.')[0], dataset=d_name),
+                if n_id == dataset + '.' + view:
+                    node_attr = dict(style='filled', color='lightgreen')
+                elif bv.bq_info_handler.raw_details[d][t]['type'] == 'TABLE':
+                    node_attr = dict(style='filled', color='red')
+                else:
+                    node_attr = dict(style='filled', color='white')
+                with subgraphs[d_name] as s:
+                    s.node(n_id, label=t, href=URL_BQ.format(table=t, project_id=d.split('.')[0], dataset=d_name),
                                                     **node_attr)
         for d in bv.bq_info_handler.raw_details:
             for t in bv.bq_info_handler.raw_details[d]:
