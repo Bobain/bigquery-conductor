@@ -27,8 +27,8 @@ class BasicVisualizer():
         self.bq_info_handler = BQInfoHandler(path_to_conf_file=path_to_conf_file, retrieve_all_data=False)
         self.bq_info_handler.raw_details = dict()
 
-    def visualize_dependencies(self, dataset, view):
-        self.bq_info_handler.get_full_dependency(dataset, view, interpreter="Natural dependencies")
+    def visualize_dependencies(self, dataset, view, interpreter):
+        self.bq_info_handler.get_full_dependency(dataset, view, interpreter=interpreter)
         dot = Digraph(comment=dataset + '.' + view)
         subgraphs = dict()
         for d in bv.bq_info_handler.raw_details:
@@ -42,6 +42,8 @@ class BasicVisualizer():
                 n_id = d + '.' + t
                 if n_id == dataset + '.' + view:
                     node_attr = dict(style='filled', color='lightgreen')
+                elif 'cached_view_name' in bv.bq_info_handler.raw_details[d][t]:
+                    node_attr = dict(style='filled', color='lightblue')
                 elif bv.bq_info_handler.raw_details[d][t]['type'] == 'TABLE':
                     node_attr = dict(style='filled', color='red')
                 else:
@@ -64,10 +66,12 @@ class BQInfoHandler():
     interpreted_graphs = {
         "Natural dependencies": dict(nodes=dict(), graphs=[], js_graphs=[], interpreted_id_to_js_graph_num=dict()),
         "First order dependencies": dict(nodes=dict(), graphs=[], js_graphs=[], interpreted_id_to_js_graph_num=dict()),
+        "Include cached views dependencies": dict(nodes=dict(), graphs=[], js_graphs=[],
+                                                  interpreted_id_to_js_graph_num=dict()),
         # "Caching interpreter": dict(nodes=dict(), graphs=[], js_graphs=[], interpreted_id_to_js_graph_num=dict()),
         # "Caching cut-off": dict(nodes=dict(), graphs=[], js_graphs=[], interpreted_id_to_js_graph_num=dict())
     }
-    full_id_to_interpreted_nodes = {"Natural dependencies": dict(), "First order dependencies": dict()}
+    full_id_to_interpreted_nodes = {"Natural dependencies": dict(), "Include Cached views dependencies": dict()}
     errors_to_raise = dict()
     raw_details = None
 
@@ -175,13 +179,14 @@ class BQInfoHandler():
         else:
             p, d, t = args[0].split('.')
             d = p + '.' + d
-        if interpreter == "Natural dependencies" or interpreter == "First order dependencies" :
+        if interpreter in ["Natural dependencies", "First order dependencies", "Include cached views dependencies"]:
             return d + '.' + t
         else:
             raise NotImplementedError()
 
     def get_full_dependency(self, dataset_id, view_id, interpreter):
-        assert interpreter in ["Natural dependencies", "First order dependencies"], "Not yet implemented"
+        assert interpreter in ["Natural dependencies", "First order dependencies",
+                               "Include cached views dependencies"], "Not yet implemented"
         if interpreter == "First order dependencies":
             return self.get_view_first_order_dependencies(dataset_id, view_id, interpreter)
         view_full_id = self.get_interpreter_id(interpreter, dataset_id, view_id)
@@ -208,8 +213,10 @@ class BQInfoHandler():
         return self.interpreted_graphs[interpreter]['nodes'][view_full_id]['full_dependencies']
 
     # Note 1: in case of a table we will return (set(), '# This is just a table')
+    # except for "Include cached views dependencies" interpreter: in which we will look through cached view dependencies
     def get_view_first_order_dependencies(self, dataset_id, view_id, interpreter):
-        assert interpreter in ["Natural dependencies", "First order dependencies", "Beyond caching"], "Not yet implemented"
+        assert interpreter in ["Natural dependencies", "First order dependencies",
+                               "Include cached views dependencies"], "Not yet implemented"
         view_full_id = self.get_interpreter_id(interpreter, dataset_id, view_id)
         if view_full_id in self.interpreted_graphs[interpreter]['nodes'] \
                 and 'first_order_dependencies' in self.interpreted_graphs[interpreter]['nodes'][view_full_id]:
@@ -223,8 +230,26 @@ class BQInfoHandler():
                 .to_api_repr()
             # return "%s '%s.%s' does not exist" % (BROKEN_DEP_MESS, dataset_id, view_id)
         view_full_metadata = self.raw_details[dataset_id][view_id]
+        if interpreter == "Include cached views dependencies" and view_full_metadata["type"] != 'VIEW':
+            try:
+                view_full_metadata = self.raw_details[dataset_id][view_id + '_to_be_cached']
+                view_full_metadata['cached_view_name'] = view_id + '_to_be_cached'
+            except Exception as e:
+                # print(e)
+                try:
+                    self.raw_details[dataset_id][view_id] = \
+                        self.bq_client._client.get_table( \
+                            TableReference(
+                                DatasetReference(self.bq_conductor_conf.GOOGLE_CLOUD_PROJECT, dataset_id.split('.')[-1]),
+                                view_id + '_to_be_cached')) \
+                            .to_api_repr()
+                    view_full_metadata = self.raw_details[dataset_id][view_id]
+                    view_full_metadata['cached_view_name'] = view_id + '_to_be_cached'
+                except Exception as e:
+                    # print(e)
+                    pass
         self.interpreted_graphs[interpreter]['nodes'][view_full_id] = view_full_metadata
-        if view_full_metadata["type"] != 'VIEW' and interpreter != "Beyond caching":  # Note 1
+        if view_full_metadata["type"] != 'VIEW':  # Note 1
             self.interpreted_graphs[interpreter]['nodes'][view_full_id]['first_order_dependencies'] = set()
             if view_full_id not in STATIC_TABLES \
                     and datetime.date.fromtimestamp(
@@ -239,8 +264,6 @@ class BQInfoHandler():
                 warnings.warn(err_mess)
                 self.errors_to_raise[view_full_id] = Exception(err_mess)
             return self.interpreted_graphs[interpreter]['nodes'][view_full_id]['first_order_dependencies']
-        elif interpreter == "Beyond caching":
-            pass
         sql_query = view_full_metadata['view']['query']
         # TODO: test that sql query does not contain some dataset_id.table_id without ` surrounding it
         # TODO: wildcards queries https://cloud.google.com/bigquery/docs/querying-wildcard-tables
@@ -266,5 +289,6 @@ class BQInfoHandler():
 if __name__ == '__main__':
     import os
     bv = BasicVisualizer("/home/tonigor/git_repos/bigquery-conductor/tests/examples/basic_tests/bq_conductor_conf.py")
-    fn = bv.visualize_dependencies("ulule-database.a_ulule_partner_visibility", "monthly_brands_metrics_to_be_cached")
+    fn = bv.visualize_dependencies("ulule-database.a_ulule_partner_visibility", "monthly_brands_metrics_to_be_cached",
+                                   "Natural dependencies")# "Include cached views dependencies")
     print('file://'+ os.getcwd() + '/' + fn)
