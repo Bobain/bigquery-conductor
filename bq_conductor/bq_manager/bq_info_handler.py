@@ -21,6 +21,12 @@ def full_id_to_pdt_id(full_id):
     return (pdt_id[0] + '.' + pdt_id[1], pdt_id[2])
 
 
+def datasets_sg_attrs(sc, name):
+    with sc as s:
+        s.attr(label=name)
+        s.attr(style='filled')
+        s.attr(color='lightgrey')
+
 class BasicVisualizer():
     bq_info_handler = None
 
@@ -29,26 +35,62 @@ class BasicVisualizer():
         self.bq_info_handler.raw_details = dict()
 
     def visualize_dependencies(self, dataset, view):
+        # self.bq_info_handler.get_full_dependency(dataset, view, interpreter="Natural dependencies")
+        # dot = Digraph(comment=dataset + '.' + view)
+        # created_node = []
+        # for d in bv.bq_info_handler.raw_details:
+        #     for t in bv.bq_info_handler.raw_details[d]:
+        #         n_id = d + '.' + t
+        #         if n_id not in created_node:
+        #             dot.node(n_id, label=t, href=URL_BQ.format(table=t, project_id=d.split('.')[0],
+        #                                                        dataset=d.split('.')[1]))
+        #             created_node += [n_id]
+        # for d in bv.bq_info_handler.raw_details:
+        #     for t in bv.bq_info_handler.raw_details[d]:
+        #         n_id = d + '.' + t
+        #         for t_dep in bv.bq_info_handler.raw_details[d][t]['first_order_dependencies']:
+        #             if t_dep not in created_node:
+        #                 dot.node(t_dep, label=t_dep.split('.')[-1])
+        #                 created_node += [t_dep]
+        #             dot.edge(n_id, t_dep)
+        # fn = dot.render('dot_tmp', format='svg', cleanup=True)  # , view=True
+        # return fn
+
         self.bq_info_handler.get_full_dependency(dataset, view, interpreter="Natural dependencies")
         dot = Digraph(comment=dataset + '.' + view)
-        project_id = self.bq_info_handler.bq_client.project_id
-        created_node = []
+        created_node = dict()
+        subgraphs = dict()
         for d in bv.bq_info_handler.raw_details:
+            d_name = d.split('.')[-1]
+            subgraphs[d_name] = dot.subgraph(name='cluster_' + d_name)
+            datasets_sg_attrs(subgraphs[d_name], d_name)
             for t in bv.bq_info_handler.raw_details[d]:
                 n_id = d + '.' + t
                 if n_id not in created_node:
-                    dot.node(n_id, label=t, href=URL_BQ.format(table=t, project_id=d.split('.')[0],
-                                                              dataset=d.split('.')[1]))
-                    created_node += [n_id]
+                    if n_id == dataset + '.' + view:
+                        node_attr = dict(style='filled', color='lightgreen')
+                    elif bv.bq_info_handler.raw_details[d][t]['type'] == 'TABLE':
+                        node_attr = dict(style='filled', color='red')
+                    else:
+                        node_attr = dict(style='filled', color='white')
+                    with subgraphs[d_name] as s:
+                        created_node[n_id] = s.node(n_id, label=t,
+                                                    href=URL_BQ.format(table=t,
+                                                                   project_id=d.split('.')[0], dataset=d_name),
+                                                    **node_attr)
         for d in bv.bq_info_handler.raw_details:
             for t in bv.bq_info_handler.raw_details[d]:
                 n_id = d + '.' + t
                 for t_dep in bv.bq_info_handler.raw_details[d][t]['first_order_dependencies']:
                     if t_dep not in created_node:
-                        dot.node(t_dep, label=t_dep.split('.')[-1])
-                        created_node += [t_dep]
+                        d_name_t_dep = t_dep.split('.')[-2]
+                        if d_name_t_dep not in subgraphs:
+                            subgraphs[d_name_t_dep] = dot.subgraph(name='cluster_' + d_name_t_dep)
+                            datasets_sg_attrs(subgraphs[d_name_t_dep], d_name_t_dep)
+                        with subgraphs[d_name_t_dep] as s:
+                            created_node[t_dep] = s.node(t_dep, label=t_dep.split('.')[-1])
                     dot.edge(n_id, t_dep)
-        fn = dot.render('dot_tmp', format='svg', cleanup=True)# , view=True
+        fn = dot.render('dot_tmp', format='svg')
         return fn
 
 
@@ -138,13 +180,13 @@ class BQInfoHandler():
                     is_broken_node = not(n in self.full_id_to_interpreted_nodes[interpreter])
                     tmp_nodes.append(
                         dict(id=self.full_id_to_interpreted_nodes[interpreter][n]
-                                if not(is_broken_node) else ("%s DOES NOT EXIST!" % n),
-                        # this will be displayed on graph: make it short
-                        label=self.full_id_to_interpreted_nodes[interpreter][n].split('.')[-1]
-                                if not(is_broken_node) else ("%s DOES NOT EXIST!" % n),
-                        title=n if not(is_broken_node) else "%s DOES NOT EXIST!" % n, # popup when hovering node
-                        shape='text', # TODO make shape depend on type (table, view, or chaching mecanism)
-                        color='blue' if not(is_broken_node) else 'red' ))
+                        if not(is_broken_node) else ("%s DOES NOT EXIST!" % n),
+                             # this will be displayed on graph: make it short
+                             label=self.full_id_to_interpreted_nodes[interpreter][n].split('.')[-1]
+                             if not(is_broken_node) else ("%s DOES NOT EXIST!" % n),
+                             title=n if not(is_broken_node) else "%s DOES NOT EXIST!" % n, # popup when hovering node
+                             shape='text', # TODO make shape depend on type (table, view, or chaching mecanism)
+                             color='blue' if not(is_broken_node) else 'red' ))
                     tmp_id_to_num[n] = i
                     i += 1
                 for i, n in enumerate(g):
@@ -203,7 +245,7 @@ class BQInfoHandler():
 
     # Note 1: in case of a table we will return (set(), '# This is just a table')
     def get_view_first_order_dependencies(self, dataset_id, view_id, interpreter):
-        assert interpreter in ["Natural dependencies", "First order dependencies"], "Not yet implemented"
+        assert interpreter in ["Natural dependencies", "First order dependencies", "Beyond caching"], "Not yet implemented"
         view_full_id = self.get_interpreter_id(interpreter, dataset_id, view_id)
         if view_full_id in self.interpreted_graphs[interpreter]['nodes'] \
                 and 'first_order_dependencies' in self.interpreted_graphs[interpreter]['nodes'][view_full_id]:
@@ -212,18 +254,18 @@ class BQInfoHandler():
             # lazy load:
             if dataset_id not in self.raw_details:
                 self.raw_details[dataset_id] = dict()
-            self.raw_details[dataset_id][view_id] = self.bq_client._client.get_table(\
+            self.raw_details[dataset_id][view_id] = self.bq_client._client.get_table( \
                 TableReference(DatasetReference(self.bq_conductor_conf.GOOGLE_CLOUD_PROJECT, dataset_id.split('.')[-1]), view_id)) \
                 .to_api_repr()
             # return "%s '%s.%s' does not exist" % (BROKEN_DEP_MESS, dataset_id, view_id)
         view_full_metadata = self.raw_details[dataset_id][view_id]
         self.interpreted_graphs[interpreter]['nodes'][view_full_id] = view_full_metadata
-        if view_full_metadata["type"] != 'VIEW':  # Note 1
+        if view_full_metadata["type"] != 'VIEW' and interpreter != "Beyond caching":  # Note 1
             self.interpreted_graphs[interpreter]['nodes'][view_full_id]['first_order_dependencies'] = set()
             if view_full_id not in STATIC_TABLES \
                     and datetime.date.fromtimestamp(
-                                float(view_full_metadata['lastModifiedTime']) / 1000.0) < \
-                                    datetime.date.today() - datetime.timedelta(days=2):
+                float(view_full_metadata['lastModifiedTime']) / 1000.0) < \
+                    datetime.date.today() - datetime.timedelta(days=2):
                 # checking that the tables we rely on do not seem to be dead
                 # (no updates, for instance because of a removed view to be cached)
                 err_mess = "ERROR: %s.%s seem to be a dead table (no modification since %s)" \
@@ -233,6 +275,8 @@ class BQInfoHandler():
                 warnings.warn(err_mess)
                 self.errors_to_raise[view_full_id] = Exception(err_mess)
             return self.interpreted_graphs[interpreter]['nodes'][view_full_id]['first_order_dependencies']
+        elif interpreter == "Beyond caching":
+            pass
         sql_query = view_full_metadata['view']['query']
         # TODO: test that sql query does not contain some dataset_id.table_id without ` surrounding it
         # TODO: wildcards queries https://cloud.google.com/bigquery/docs/querying-wildcard-tables
