@@ -20,13 +20,6 @@ def full_id_to_pdt_id(full_id):
     pdt_id = full_id.split('.')
     return (pdt_id[0] + '.' + pdt_id[1], pdt_id[2])
 
-
-def datasets_sg_attrs(sc, name):
-    with sc as s:
-        s.attr(label=name)
-        s.attr(style='filled')
-        s.attr(color='lightgrey')
-
 class BasicVisualizer():
     bq_info_handler = None
 
@@ -35,27 +28,6 @@ class BasicVisualizer():
         self.bq_info_handler.raw_details = dict()
 
     def visualize_dependencies(self, dataset, view):
-        # self.bq_info_handler.get_full_dependency(dataset, view, interpreter="Natural dependencies")
-        # dot = Digraph(comment=dataset + '.' + view)
-        # created_node = []
-        # for d in bv.bq_info_handler.raw_details:
-        #     for t in bv.bq_info_handler.raw_details[d]:
-        #         n_id = d + '.' + t
-        #         if n_id not in created_node:
-        #             dot.node(n_id, label=t, href=URL_BQ.format(table=t, project_id=d.split('.')[0],
-        #                                                        dataset=d.split('.')[1]))
-        #             created_node += [n_id]
-        # for d in bv.bq_info_handler.raw_details:
-        #     for t in bv.bq_info_handler.raw_details[d]:
-        #         n_id = d + '.' + t
-        #         for t_dep in bv.bq_info_handler.raw_details[d][t]['first_order_dependencies']:
-        #             if t_dep not in created_node:
-        #                 dot.node(t_dep, label=t_dep.split('.')[-1])
-        #                 created_node += [t_dep]
-        #             dot.edge(n_id, t_dep)
-        # fn = dot.render('dot_tmp', format='svg', cleanup=True)  # , view=True
-        # return fn
-
         self.bq_info_handler.get_full_dependency(dataset, view, interpreter="Natural dependencies")
         dot = Digraph(comment=dataset + '.' + view)
         created_node = dict()
@@ -63,7 +35,10 @@ class BasicVisualizer():
         for d in bv.bq_info_handler.raw_details:
             d_name = d.split('.')[-1]
             subgraphs[d_name] = dot.subgraph(name='cluster_' + d_name)
-            datasets_sg_attrs(subgraphs[d_name], d_name)
+            with subgraphs[d_name] as s:
+                s.attr(label=d_name)
+                s.attr(style='filled')
+                s.attr(color='lightgrey')
             for t in bv.bq_info_handler.raw_details[d]:
                 n_id = d + '.' + t
                 if n_id not in created_node:
@@ -82,13 +57,6 @@ class BasicVisualizer():
             for t in bv.bq_info_handler.raw_details[d]:
                 n_id = d + '.' + t
                 for t_dep in bv.bq_info_handler.raw_details[d][t]['first_order_dependencies']:
-                    if t_dep not in created_node:
-                        d_name_t_dep = t_dep.split('.')[-2]
-                        if d_name_t_dep not in subgraphs:
-                            subgraphs[d_name_t_dep] = dot.subgraph(name='cluster_' + d_name_t_dep)
-                            datasets_sg_attrs(subgraphs[d_name_t_dep], d_name_t_dep)
-                        with subgraphs[d_name_t_dep] as s:
-                            created_node[t_dep] = s.node(t_dep, label=t_dep.split('.')[-1])
                     dot.edge(n_id, t_dep)
         fn = dot.render('dot_tmp', format='svg')
         return fn
