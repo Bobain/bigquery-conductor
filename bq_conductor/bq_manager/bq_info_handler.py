@@ -27,10 +27,15 @@ class BasicVisualizer():
         self.bq_info_handler = BQInfoHandler(path_to_conf_file=path_to_conf_file, retrieve_all_data=False)
         self.bq_info_handler.raw_details = dict()
 
-    def visualize_dependencies(self, dataset, view, interpreter):
+    def visualize_dependencies(self, dataset, view, interpreter, rel_dir):
+        dirn = os.getcwd() + '/' + rel_dir + '/'
+        if not os.path.isdir(dirn):
+            os.mkdir(dirn)
         self.bq_info_handler.get_full_dependency(dataset, view, interpreter=interpreter)
         dot = Digraph(comment=dataset + '.' + view)
         subgraphs = dict()
+        cached_views_dep_todo = []
+        all_nodes_here = []
         for d in bv.bq_info_handler.raw_details:
             d_name = d.split('.')[-1]
             subgraphs[d_name] = dot.subgraph(name='cluster_' + d_name)
@@ -40,23 +45,37 @@ class BasicVisualizer():
                 s.attr(color='lightgrey')
             for t in bv.bq_info_handler.iterate_retrieved_dataset(d):
                 n_id = d + '.' + t
+                if not(n_id in bv.bq_info_handler.raw_details[dataset][view]['full_dependencies'] \
+                    or n_id == dataset + '.' + view):
+                    continue
+                all_nodes_here += [(d, t, n_id)]
+                href = URL_BQ.format(table=t, project_id=d.split('.')[0], dataset=d_name)
                 if n_id == dataset + '.' + view:
                     node_attr = dict(style='filled', color='lightgreen')
                 elif 'cached_view_name' in bv.bq_info_handler.raw_details[d][t]:
-                    node_attr = dict(style='filled', color='lightblue')
+                    if interpreter == "Include cached views dependencies":
+                        node_attr = dict(style='filled', color='lightblue')
+                    else:
+                        cvn = bv.bq_info_handler.get_raw_details(d, t)['cached_view_name']
+                        node_attr = dict(style='filled', color='lightblue')
+                        href = 'file://' + dirn + d + '.' + cvn + '.svg'
+                        cached_views_dep_todo += [(d, cvn)]
                 elif bv.bq_info_handler.raw_details[d][t]['type'] == 'TABLE':
                     node_attr = dict(style='filled', color='red')
                 else:
                     node_attr = dict(style='filled', color='white')
                 with subgraphs[d_name] as s:
-                    s.node(n_id, label=t, href=URL_BQ.format(table=t, project_id=d.split('.')[0], dataset=d_name),
-                                                    **node_attr)
-        for d in bv.bq_info_handler.raw_details:
-            for t in bv.bq_info_handler.iterate_retrieved_dataset(d):
-                n_id = d + '.' + t
-                for t_dep in bv.bq_info_handler.raw_details[d][t]['first_order_dependencies']:
-                    dot.edge(n_id, t_dep)
-        fn = dot.render('dot_tmp', format='svg')
+                    s.node(n_id, label=t, href=href, **node_attr)
+        for d, t, n_id in all_nodes_here:
+            for t_dep in bv.bq_info_handler.raw_details[d][t]['first_order_dependencies']:
+                dot.edge(n_id, t_dep)
+        fn = dataset + '.' + view
+        fullfn = dirn + fn
+        fn = dot.render(fullfn, format='svg')
+        print('file://' + fullfn + '.svg')
+        for d, cvn in cached_views_dep_todo:
+            if not(os.path.isfile(dirn+d+'.'+cvn)):
+                self.visualize_dependencies(d, cvn, interpreter, rel_dir)
         return fn
 
 
@@ -252,6 +271,9 @@ class BQInfoHandler():
             else:
                 view_full_metadata['cached_view_name'] = view_id + '_to_be_cached'
             raise NotImplementedError() # We'd rather say this table depends on the view and explore the views dependencies
+        elif view_full_metadata["type"] != 'VIEW':
+            if self.get_raw_details(dataset_id, view_id + '_to_be_cached') is not None:
+                view_full_metadata['cached_view_name'] = view_id + '_to_be_cached'
         self.interpreted_graphs[interpreter]['nodes'][view_full_id] = view_full_metadata
         if view_full_metadata["type"] != 'VIEW':  # Note 1
             self.interpreted_graphs[interpreter]['nodes'][view_full_id]['first_order_dependencies'] = set()
@@ -293,8 +315,10 @@ class BQInfoHandler():
 if __name__ == '__main__':
     import os
     bv = BasicVisualizer("/home/tonigor/git_repos/bigquery-conductor/tests/examples/basic_tests/bq_conductor_conf.py")
+    dirn = './dot_tmp'
+    import shutil
+    shutil.rmtree(dirn)
     fn = bv.visualize_dependencies("ulule-database.a_ulule_partner_visibility", "monthly_brands_metrics_to_be_cached",
-                                    "Natural dependencies")# "Include cached views dependencies") #
+                                    "Natural dependencies", dirn)# "Include cached views dependencies") #
     # import webbrowser, os
     # webbrowser.open('file://' + os.path.realpath(filename))
-    print('file://'+ os.getcwd() + '/' + fn)
