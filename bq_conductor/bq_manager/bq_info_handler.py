@@ -313,12 +313,12 @@ class BQInfoHandler():
 
 
 if __name__ == '__main__':
-    import os
+    import os, sys, shutil
     bv = BasicVisualizer("/home/tonigor/git_repos/bigquery-conductor/tests/examples/basic_tests/bq_conductor_conf.py")
-    dirn = './dot_tmp'
-    import shutil
-    shutil.rmtree(dirn)
-    fn = bv.visualize_dependencies("ulule-database.a_ulule_partner_visibility", "monthly_brands_metrics_to_be_cached",
+    dirn = './bqc_dot_tmp'
+    if os.path.isdir(dirn):
+        shutil.rmtree(dirn)
+    fn = bv.visualize_dependencies('.'.join(sys.argv[1].split('.')[0:2]), sys.argv[1].split('.')[2],
                                     "Natural dependencies", dirn)# "Include cached views dependencies") #
     # import webbrowser, os
     # webbrowser.open('file://' + os.path.realpath(filename))
