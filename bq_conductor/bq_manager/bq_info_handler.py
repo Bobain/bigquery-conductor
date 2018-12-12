@@ -265,15 +265,15 @@ class BQInfoHandler():
             # return "%s '%s.%s' does not exist" % (BROKEN_DEP_MESS, dataset_id, view_id)
         view_full_metadata = self.get_raw_details(dataset_id, view_id)
         if interpreter == "Include cached views dependencies" and view_full_metadata["type"] != 'VIEW':
-            view_full_metadata = self.get_raw_details(dataset_id, view_id + '_to_be_cached')
+            view_full_metadata = self.get_raw_details(dataset_id, view_id + self.bq_conductor_conf.CVIT_SUFFIX)
             if view_full_metadata is None:
                 view_full_metadata = self.get_raw_details(dataset_id, view_id)
             else:
-                view_full_metadata['cached_view_name'] = view_id + '_to_be_cached'
+                view_full_metadata['cached_view_name'] = view_id + self.bq_conductor_conf.CVIT_SUFFIX
             raise NotImplementedError() # We'd rather say this table depends on the view and explore the views dependencies
         elif view_full_metadata["type"] != 'VIEW':
-            if self.get_raw_details(dataset_id, view_id + '_to_be_cached') is not None:
-                view_full_metadata['cached_view_name'] = view_id + '_to_be_cached'
+            if self.get_raw_details(dataset_id, view_id + self.bq_conductor_conf.CVIT_SUFFIX) is not None:
+                view_full_metadata['cached_view_name'] = view_id + self.bq_conductor_conf.CVIT_SUFFIX
         self.interpreted_graphs[interpreter]['nodes'][view_full_id] = view_full_metadata
         if view_full_metadata["type"] != 'VIEW':  # Note 1
             self.interpreted_graphs[interpreter]['nodes'][view_full_id]['first_order_dependencies'] = set()
