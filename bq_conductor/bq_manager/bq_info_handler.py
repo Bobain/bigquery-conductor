@@ -38,7 +38,7 @@ class BasicVisualizer():
                 s.attr(label=d_name)
                 s.attr(style='filled')
                 s.attr(color='lightgrey')
-            for t in bv.bq_info_handler.raw_details[d]:
+            for t in bv.bq_info_handler.iterate_retrieved_dataset(d):
                 n_id = d + '.' + t
                 if n_id == dataset + '.' + view:
                     node_attr = dict(style='filled', color='lightgreen')
@@ -52,7 +52,7 @@ class BasicVisualizer():
                     s.node(n_id, label=t, href=URL_BQ.format(table=t, project_id=d.split('.')[0], dataset=d_name),
                                                     **node_attr)
         for d in bv.bq_info_handler.raw_details:
-            for t in bv.bq_info_handler.raw_details[d]:
+            for t in bv.bq_info_handler.iterate_retrieved_dataset(d):
                 n_id = d + '.' + t
                 for t_dep in bv.bq_info_handler.raw_details[d][t]['first_order_dependencies']:
                     dot.edge(n_id, t_dep)
@@ -74,6 +74,8 @@ class BQInfoHandler():
     full_id_to_interpreted_nodes = {"Natural dependencies": dict(), "Include Cached views dependencies": dict()}
     errors_to_raise = dict()
     raw_details = None
+    did_full_update = False
+    lazy_load_memory = []
 
     def __init__(self, path_to_conf_file, retrieve_all_data=True):
         self.bq_client = BQClient(path_to_conf_file)
@@ -171,6 +173,7 @@ class BQInfoHandler():
             for n in self.interpreted_graphs[interpreter]['nodes']:
                 for sd in ['first_order_dependencies', 'full_dependencies']:
                     self.interpreted_graphs[interpreter]['nodes'][n][sd] = list(self.interpreted_graphs[interpreter]['nodes'][n][sd])
+        self.did_full_update = True
 
     def get_interpreter_id(self, interpreter, *args):
         assert len(args) in [1, 2], "Wrong number of inputs"
@@ -212,6 +215,25 @@ class BQInfoHandler():
         self.interpreted_graphs[interpreter]['nodes'][view_full_id]['full_dependencies'] = dep
         return self.interpreted_graphs[interpreter]['nodes'][view_full_id]['full_dependencies']
 
+    def get_raw_details(self, dataset_id, view_id):
+        if self.did_full_update:
+            return self.raw_details[dataset_id][view_id]
+        if dataset_id not in self.raw_details:
+            self.raw_details[dataset_id] = dict()
+        if view_id not in self.raw_details[dataset_id]:
+            try:
+                self.raw_details[dataset_id][view_id] = self.bq_client._client.get_table( \
+                    TableReference(DatasetReference(self.bq_conductor_conf.GOOGLE_CLOUD_PROJECT,
+                                                    dataset_id.split('.')[-1]), view_id)).to_api_repr()
+            except:
+                self.raw_details[dataset_id][view_id] = None
+        return self.raw_details[dataset_id][view_id]
+
+    def iterate_retrieved_dataset(self, dataset):
+        for t in self.raw_details[dataset]:
+            if self.raw_details[dataset][t] is not None:
+                yield t
+
     # Note 1: in case of a table we will return (set(), '# This is just a table')
     # except for "Include cached views dependencies" interpreter: in which we will look through cached view dependencies
     def get_view_first_order_dependencies(self, dataset_id, view_id, interpreter):
@@ -221,33 +243,15 @@ class BQInfoHandler():
         if view_full_id in self.interpreted_graphs[interpreter]['nodes'] \
                 and 'first_order_dependencies' in self.interpreted_graphs[interpreter]['nodes'][view_full_id]:
             return self.interpreted_graphs[interpreter]['nodes'][view_full_id]['first_order_dependencies']
-        if (dataset_id not in self.raw_details) or (view_id not in self.raw_details[dataset_id]):
-            # lazy load:
-            if dataset_id not in self.raw_details:
-                self.raw_details[dataset_id] = dict()
-            self.raw_details[dataset_id][view_id] = self.bq_client._client.get_table( \
-                TableReference(DatasetReference(self.bq_conductor_conf.GOOGLE_CLOUD_PROJECT, dataset_id.split('.')[-1]), view_id)) \
-                .to_api_repr()
             # return "%s '%s.%s' does not exist" % (BROKEN_DEP_MESS, dataset_id, view_id)
-        view_full_metadata = self.raw_details[dataset_id][view_id]
+        view_full_metadata = self.get_raw_details(dataset_id, view_id)
         if interpreter == "Include cached views dependencies" and view_full_metadata["type"] != 'VIEW':
-            try:
-                view_full_metadata = self.raw_details[dataset_id][view_id + '_to_be_cached']
+            view_full_metadata = self.get_raw_details(dataset_id, view_id + '_to_be_cached')
+            if view_full_metadata is None:
+                view_full_metadata = self.get_raw_details(dataset_id, view_id)
+            else:
                 view_full_metadata['cached_view_name'] = view_id + '_to_be_cached'
-            except Exception as e:
-                # print(e)
-                try:
-                    self.raw_details[dataset_id][view_id] = \
-                        self.bq_client._client.get_table( \
-                            TableReference(
-                                DatasetReference(self.bq_conductor_conf.GOOGLE_CLOUD_PROJECT, dataset_id.split('.')[-1]),
-                                view_id + '_to_be_cached')) \
-                            .to_api_repr()
-                    view_full_metadata = self.raw_details[dataset_id][view_id]
-                    view_full_metadata['cached_view_name'] = view_id + '_to_be_cached'
-                except Exception as e:
-                    # print(e)
-                    pass
+            raise NotImplementedError() # We'd rather say this table depends on the view and explore the views dependencies
         self.interpreted_graphs[interpreter]['nodes'][view_full_id] = view_full_metadata
         if view_full_metadata["type"] != 'VIEW':  # Note 1
             self.interpreted_graphs[interpreter]['nodes'][view_full_id]['first_order_dependencies'] = set()
@@ -290,5 +294,7 @@ if __name__ == '__main__':
     import os
     bv = BasicVisualizer("/home/tonigor/git_repos/bigquery-conductor/tests/examples/basic_tests/bq_conductor_conf.py")
     fn = bv.visualize_dependencies("ulule-database.a_ulule_partner_visibility", "monthly_brands_metrics_to_be_cached",
-                                   "Natural dependencies")# "Include cached views dependencies")
+                                    "Natural dependencies")# "Include cached views dependencies") #
+    # import webbrowser, os
+    # webbrowser.open('file://' + os.path.realpath(filename))
     print('file://'+ os.getcwd() + '/' + fn)
