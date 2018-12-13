@@ -311,7 +311,7 @@ class BQInfoHandler():
 
 if __name__ == '__main__':
     import os, sys, shutil
-    bv = BasicVisualizer("/home/tonigor/git_repos/bigquery-conductor/tests/examples/basic_tests/bq_conductor_conf.py")
+    bv = BasicVisualizer(os.getenv("BQ_CONDUCTOR_CONF"))
     dirn = './bqc_dot_tmp'
     if os.path.isdir(dirn):
         shutil.rmtree(dirn)

@@ -1,10 +1,13 @@
 import os
 import re
 
+CURRENT_DIR = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), os.pardir))
+PROJECT_PATH = os.path.join(CURRENT_DIR, os.pardir, os.pardir)
+
 # < Google cloud project configuration
 GOOGLE_CLOUD_PROJECT = 'ulule-database' # id for project (letters, not digits)
 os.environ['GOOGLE_CLOUD_PROJECT'] = GOOGLE_CLOUD_PROJECT # setting it as env for big query client
-GOOGLE_APPLICATION_CREDENTIALS = '/home/tonigor/git_repos/bigquery-conductor/UluleDatabase-850a3f482837.json' # path to p12 or json file for credentials
+GOOGLE_APPLICATION_CREDENTIALS = os.path.join(PROJECT_PATH, 'UluleDatabase-850a3f482837.json') # path to p12 or json file for credentials
 os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = GOOGLE_APPLICATION_CREDENTIALS # setting it as env for big query client
 
 DEFAULTS = dict(
