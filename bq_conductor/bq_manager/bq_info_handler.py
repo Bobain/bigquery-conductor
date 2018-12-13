@@ -49,23 +49,20 @@ class BasicVisualizer():
                     or n_id == dataset + '.' + view):
                     continue
                 all_nodes_here += [(d, t, n_id)]
-                href = URL_BQ.format(table=t, project_id=d.split('.')[0], dataset=d_name)
+                node_attr = dict(href=URL_BQ.format(table=t, project_id=d.split('.')[0], dataset=d_name),
+                                 target="_blank", style='filled', color='white')
                 if n_id == dataset + '.' + view:
-                    node_attr = dict(style='filled', color='lightgreen')
+                    node_attr.update(dict(color='lightgreen'))
                 elif 'cached_view_name' in bv.bq_info_handler.raw_details[d][t]:
-                    if interpreter == "Include cached views dependencies":
-                        node_attr = dict(style='filled', color='lightblue')
-                    else:
+                    node_attr.update(dict(color='lightblue'))
+                    if interpreter != "Include cached views dependencies":
                         cvn = bv.bq_info_handler.get_raw_details(d, t)['cached_view_name']
-                        node_attr = dict(style='filled', color='lightblue')
-                        href = 'file://' + dirn + d + '.' + cvn + '.svg'
+                        node_attr.update(dict(href='file://' + dirn + d + '.' + cvn + '.svg'))
                         cached_views_dep_todo += [(d, cvn)]
                 elif bv.bq_info_handler.raw_details[d][t]['type'] == 'TABLE':
-                    node_attr = dict(style='filled', color='red')
-                else:
-                    node_attr = dict(style='filled', color='white')
+                    node_attr.update(dict(color='red'))
                 with subgraphs[d_name] as s:
-                    s.node(n_id, label=t, href=href, **node_attr)
+                    s.node(n_id, label=t, **node_attr)
         for d, t, n_id in all_nodes_here:
             for t_dep in bv.bq_info_handler.raw_details[d][t]['first_order_dependencies']:
                 dot.edge(n_id, t_dep)
